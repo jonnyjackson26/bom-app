@@ -1,8 +1,9 @@
-import { StyleSheet, ScrollView, TouchableOpacity, Dimensions, TextInput } from 'react-native';
-import { Text, View } from '@/components/Themed';
-import { useState, useEffect } from 'react';
+import { StyleSheet, ScrollView, TouchableOpacity, Dimensions, TextInput, Modal, View, TouchableWithoutFeedback } from 'react-native';
+import { Text } from '@/components/Themed';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import bomData from '@/assets/data/bom.json';
+import { SelectionMenu } from '@/components/SelectionMenu';
 
 // Define types for the Book of Mormon data structure
 type BookOfMormonData = {
@@ -51,7 +52,13 @@ const bookChapters: { [key: string]: number } = {
 export default function TabOneScreen() {
   const [selectedBook, setSelectedBook] = useState<string | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<number | null>(null);
+  const [selectedText, setSelectedText] = useState('');
+  const [showMenu, setShowMenu] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const textInputRef = useRef<TextInput>(null);
   const navigation = useNavigation();
+  const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
+  const [showSelectionMenu, setShowSelectionMenu] = useState(false);
 
   useEffect(() => {
     // Set up the back button in the header
@@ -100,23 +107,81 @@ export default function TabOneScreen() {
     return (bomData as BookOfMormonData)[bookKey]?.[selectedChapter.toString()] || [];
   };
 
+  const handleTextSelection = (event: any) => {
+    const { selection } = event.nativeEvent;
+    if (selection) {
+      const { start, end } = selection;
+      const text = event.nativeEvent.text;
+      const selectedText = text.substring(start, end);
+      
+      if (selectedText.trim()) {
+        setSelectedText(selectedText);
+        // Get the position of the selection
+        textInputRef.current?.measure((x, y, width, height, pageX, pageY) => {
+          // Calculate position based on the selection
+          const selectionY = pageY + (height * (start / text.length));
+          setSelectionPosition({ 
+            x: pageX + width / 2, // Center horizontally
+            y: selectionY - 40 // Position above the selection
+          });
+          setShowSelectionMenu(true);
+        });
+      }
+    }
+  };
+
+  const handleHighlight = () => {
+    // TODO: Implement highlighting
+    setShowSelectionMenu(false);
+  };
+
+  const handleAnnotate = () => {
+    // TODO: Implement annotation
+    setShowSelectionMenu(false);
+  };
+
+  const handleShare = () => {
+    // TODO: Implement sharing
+    setShowSelectionMenu(false);
+  };
+
+  const handleCopy = () => {
+    // TODO: Implement copying
+    setShowSelectionMenu(false);
+  };
+
   const renderContent = () => {
     if (selectedChapter) {
       // Show verses for selected chapter
       const verses = getVerses();
       return (
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.versesContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <TextInput 
-            style={styles.verseText} 
-            value={verses.map((verse: string, index: number) => `${index + 1} ${verse}`).join('\n\n')}
-            editable={false}
-            multiline={true}
-          />
-        </ScrollView>
+        <View style={styles.container}>
+          <ScrollView 
+            style={styles.scrollView}
+            contentContainerStyle={styles.versesContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <TextInput 
+              ref={textInputRef}
+              style={styles.verseText} 
+              value={verses.map((verse: string, index: number) => `${index + 1} ${verse}`).join('\n\n')}
+              editable={false}
+              multiline={true}
+              onSelectionChange={handleTextSelection}
+              contextMenuHidden={true}
+            />
+          </ScrollView>
+          {showSelectionMenu && (
+            <SelectionMenu
+              position={selectionPosition}
+              onHighlight={handleHighlight}
+              onAnnotate={handleAnnotate}
+              onShare={handleShare}
+              onCopy={handleCopy}
+              onDismiss={() => setShowSelectionMenu(false)}
+            />
+          )}
+        </View>
       );
     }
 
@@ -248,6 +313,34 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 1.41,
     elevation: 2,
+    color: '#000',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  menuContainer: {
+    position: 'absolute',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    minWidth: 200,
+  },
+  menuItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  menuText: {
+    fontSize: 16,
     color: '#000',
   },
 });
