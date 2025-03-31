@@ -1,4 +1,4 @@
-import { StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import { StyleSheet, ScrollView, TouchableOpacity, Dimensions, TextInput } from 'react-native';
 import { Text, View } from '@/components/Themed';
 import { useState, useEffect } from 'react';
 import { useNavigation } from '@react-navigation/native';
@@ -110,12 +110,12 @@ export default function TabOneScreen() {
           contentContainerStyle={styles.versesContent}
           showsVerticalScrollIndicator={false}
         >
-          {verses.map((verse: string, index: number) => (
-            <View key={index} style={styles.verseContainer}>
-              <Text style={styles.verseNumber}>{index + 1}</Text>
-              <Text style={styles.verseText}>{verse}</Text>
-            </View>
-          ))}
+          <TextInput 
+            style={styles.verseText} 
+            value={verses.map((verse: string, index: number) => `${index + 1} ${verse}`).join('\n\n')}
+            editable={false}
+            multiline={true}
+          />
         </ScrollView>
       );
     }
@@ -148,6 +148,7 @@ export default function TabOneScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {booksOfMormon.map((book, index) => (
           <TouchableOpacity 
@@ -232,8 +233,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  verseContainer: {
-    flexDirection: 'row',
+  verseText: {
+    fontSize: 16,
+    lineHeight: 24,
     marginBottom: 16,
     padding: 12,
     backgroundColor: '#FFFFFF',
@@ -246,16 +248,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 1.41,
     elevation: 2,
-  },
-  verseNumber: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginRight: 12,
-    color: '#007AFF',
-  },
-  verseText: {
-    flex: 1,
-    fontSize: 16,
-    lineHeight: 24,
+    color: '#000',
   },
 });
