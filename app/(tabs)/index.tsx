@@ -1,4 +1,5 @@
 import { StyleSheet, ScrollView, TouchableOpacity, Dimensions, TextInput, Modal, View, TouchableWithoutFeedback } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { Text } from '@/components/Themed';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigation } from '@react-navigation/native';
@@ -61,6 +62,7 @@ export default function TabOneScreen() {
   const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
   const [showSelectionMenu, setShowSelectionMenu] = useState(false);
   const [lastScrollY, setLastScrollY] = useState(0);
+  const [lastSelectionEnd, setLastSelectionEnd] = useState(0);
 
   useEffect(() => {
     // Set up the back button in the header
@@ -120,6 +122,7 @@ export default function TabOneScreen() {
         // No text is selected, hide the menu
         setShowSelectionMenu(false);
         setSelectedText('');
+        setLastSelectionEnd(0);
         return;
       }
       
@@ -127,25 +130,35 @@ export default function TabOneScreen() {
       
       if (selectedText.trim()) {
         setSelectedText(selectedText);
-        // Get the position of the selection
-        textInputRef.current?.measure((x, y, width, height, pageX, pageY) => {
-          // Calculate approximate position of selection within the text
-          // This is an estimation since we can't get exact coordinates
-          const totalTextLength = text.length;
-          const selectionStartPercent = start / totalTextLength;
-          const selectionEndPercent = end / totalTextLength;
-          const selectionMidPercent = (selectionStartPercent + selectionEndPercent) / 2;
+        
+        // Only update position if the selection has changed
+        if (end !== lastSelectionEnd) {
+          setLastSelectionEnd(end);
           
-          // Estimate vertical position of the selection
-          const selectionY = pageY + (height * selectionMidPercent);
-          
-          // Position the menu above the selection to avoid covering it
-          setSelectionPosition({ 
-            x: pageX + width / 2, // Center horizontally
-            y: selectionY - 60 // Position well above the selection
+          // Get the position of the selection
+          textInputRef.current?.measure((x, y, width, height, pageX, pageY) => {
+            // Calculate approximate position of the MIDDLE of the selection
+            // This is an estimation since we can't get exact coordinates
+            const totalTextLength = text.length;
+            const selectionStartPercent = start / totalTextLength;
+            const selectionEndPercent = end / totalTextLength;
+            const selectionMidPercent = (selectionStartPercent + selectionEndPercent) / 2;
+            
+            // Estimate vertical position of the middle of the selection
+            const selectionY = pageY + (height * selectionMidPercent);
+            
+            // Send the position to the menu component
+            setSelectionPosition({ 
+              x: pageX + width, // Position to the right of text
+              y: selectionY // Center of selection
+            });
+            
+            // Only show the menu if it wasn't already showing
+            if (!showSelectionMenu) {
+              setShowSelectionMenu(true);
+            }
           });
-          setShowSelectionMenu(true);
-        });
+        }
       }
     }
   };
@@ -183,7 +196,27 @@ export default function TabOneScreen() {
   };
 
   const handleCopy = () => {
-    // TODO: Implement copying
+    // Copy selected text to clipboard
+    if (selectedText) {
+      // Using dynamic import for Clipboard since the API changed in React Native
+      const copyToClipboard = async () => {
+        try {
+          // Try using the newer API first
+          if (navigator && navigator.clipboard) {
+            await navigator.clipboard.writeText(selectedText);
+          } else {
+            // Fallback for older React Native versions or platforms without navigator.clipboard
+            const Clipboard = require('react-native').Clipboard;
+            Clipboard.setString(selectedText);
+          }
+          console.log('Copied to clipboard:', selectedText);
+        } catch (error) {
+          console.error('Failed to copy text: ', error);
+        }
+      };
+      
+      copyToClipboard();
+    }
     setShowSelectionMenu(false);
   };
 

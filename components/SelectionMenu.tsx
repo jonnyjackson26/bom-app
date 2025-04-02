@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, View, TouchableOpacity, Platform, Dimensions } from 'react-native';
 import { Text } from './Themed';
+import { FontAwesome } from '@expo/vector-icons';
 
 type SelectionMenuProps = {
   position: { x: number; y: number };
@@ -12,7 +13,7 @@ type SelectionMenuProps = {
 };
 
 export function SelectionMenu({ position, onHighlight, onAnnotate, onShare, onCopy, onDismiss }: SelectionMenuProps) {
-  const [menuDimensions, setMenuDimensions] = useState({ width: 160, height: 170 });
+  const [menuDimensions, setMenuDimensions] = useState({ width: 50, height: 220 });
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const hasMeasured = useRef(false);
   const screenWidth = Dimensions.get('window').width;
@@ -26,28 +27,23 @@ export function SelectionMenu({ position, onHighlight, onAnnotate, onShare, onCo
   }, [position]);
   
   const updateMenuPosition = (pos: { x: number, y: number }) => {
-    // Calculate position to ensure menu stays within screen bounds
-    let left = pos.x - (menuDimensions.width / 2); // Center the menu horizontally
-    let top = pos.y;
-  
-    // Ensure menu stays within horizontal screen bounds
-    if (left + menuDimensions.width > screenWidth - padding) {
-      left = screenWidth - menuDimensions.width - padding;
-    }
-    if (left < padding) {
-      left = padding;
-    }
-  
+    // Position the menu on the right side of the screen
+    // Ensure there's a reasonable gap between the text and menu
+    const rightSidePosition = screenWidth - menuDimensions.width - padding;
+    
+    // Always position menu to the right of the screen
+    let left = rightSidePosition;
+    
+    // Vertically center the menu with the selection
+    let top = pos.y - (menuDimensions.height / 2);
+    
     // Ensure menu stays within vertical screen bounds
-    // If menu would go below screen bottom, position it above the selection instead
+    if (top < padding) {
+      top = padding;
+    }
+    
     if (top + menuDimensions.height > screenHeight - padding) {
-      // If there's not enough space above either, position at the top of the screen
-      if (pos.y - menuDimensions.height < padding) {
-        top = padding;
-      } else {
-        // Position above the selection point
-        top = pos.y - menuDimensions.height - 20;
-      }
+      top = screenHeight - menuDimensions.height - padding;
     }
     
     setMenuPosition({ left, top });
@@ -71,16 +67,16 @@ export function SelectionMenu({ position, onHighlight, onAnnotate, onShare, onCo
     >
       <View style={styles.menu}>
         <TouchableOpacity style={styles.menuItem} onPress={onHighlight}>
-          <Text style={styles.menuText}>Highlight</Text>
+          <FontAwesome name="paint-brush" size={22} color="#FF9500" />
         </TouchableOpacity>
         <TouchableOpacity style={styles.menuItem} onPress={onAnnotate}>
-          <Text style={styles.menuText}>Annotate</Text>
+          <FontAwesome name="pencil" size={22} color="#007AFF" />
         </TouchableOpacity>
         <TouchableOpacity style={styles.menuItem} onPress={onShare}>
-          <Text style={styles.menuText}>Share</Text>
+          <FontAwesome name="share" size={22} color="#34C759" />
         </TouchableOpacity>
         <TouchableOpacity style={styles.menuItem} onPress={onCopy}>
-          <Text style={styles.menuText}>Copy</Text>
+          <FontAwesome name="copy" size={22} color="#5856D6" />
         </TouchableOpacity>
       </View>
     </View>
@@ -94,8 +90,8 @@ const styles = StyleSheet.create({
   },
   menu: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 4,
+    borderRadius: 12,
+    padding: 8,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -104,14 +100,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
-    minWidth: 160,
+    flexDirection: 'column',
+    alignItems: 'center',
   },
   menuItem: {
-    padding: 8,
-    paddingHorizontal: 12,
-  },
-  menuText: {
-    fontSize: 14,
-    color: '#000',
+    padding: 10,
+    marginVertical: 4,
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
   },
 }); 
