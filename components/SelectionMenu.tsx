@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, View, TouchableOpacity, Platform, Dimensions } from 'react-native';
 import { Text } from './Themed';
 
@@ -12,26 +12,63 @@ type SelectionMenuProps = {
 };
 
 export function SelectionMenu({ position, onHighlight, onAnnotate, onShare, onCopy, onDismiss }: SelectionMenuProps) {
+  const [menuDimensions, setMenuDimensions] = useState({ width: 160, height: 170 });
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
+  const hasMeasured = useRef(false);
   const screenWidth = Dimensions.get('window').width;
-  const menuWidth = 160; // Width of our menu
+  const screenHeight = Dimensions.get('window').height;
   const padding = 16; // Padding from screen edges
+  const menuRef = useRef<View>(null);
 
-  // Calculate position to ensure menu stays within screen bounds
-  let left = position.x;
-  let top = position.y;
+  // Update position immediately when the input position changes
+  useEffect(() => {
+    updateMenuPosition(position);
+  }, [position]);
+  
+  const updateMenuPosition = (pos: { x: number, y: number }) => {
+    // Calculate position to ensure menu stays within screen bounds
+    let left = pos.x - (menuDimensions.width / 2); // Center the menu horizontally
+    let top = pos.y;
+  
+    // Ensure menu stays within horizontal screen bounds
+    if (left + menuDimensions.width > screenWidth - padding) {
+      left = screenWidth - menuDimensions.width - padding;
+    }
+    if (left < padding) {
+      left = padding;
+    }
+  
+    // Ensure menu stays within vertical screen bounds
+    // If menu would go below screen bottom, position it above the selection instead
+    if (top + menuDimensions.height > screenHeight - padding) {
+      // If there's not enough space above either, position at the top of the screen
+      if (pos.y - menuDimensions.height < padding) {
+        top = padding;
+      } else {
+        // Position above the selection point
+        top = pos.y - menuDimensions.height - 20;
+      }
+    }
+    
+    setMenuPosition({ left, top });
+  };
 
-  // Adjust horizontal position if menu would go off screen
-  if (left + menuWidth > screenWidth - padding) {
-    left = screenWidth - menuWidth - padding;
-  }
-
-  // Ensure menu doesn't go off the left side
-  if (left < padding) {
-    left = padding;
-  }
+  // Measure the actual dimensions of the menu when it renders
+  const onLayout = (event: any) => {
+    if (!hasMeasured.current) {
+      const { width, height } = event.nativeEvent.layout;
+      setMenuDimensions({ width, height });
+      updateMenuPosition(position);
+      hasMeasured.current = true;
+    }
+  };
 
   return (
-    <View style={[styles.container, { top, left }]}>
+    <View 
+      ref={menuRef}
+      style={[styles.container, { top: menuPosition.top, left: menuPosition.left }]}
+      onLayout={onLayout}
+    >
       <View style={styles.menu}>
         <TouchableOpacity style={styles.menuItem} onPress={onHighlight}>
           <Text style={styles.menuText}>Highlight</Text>

@@ -56,9 +56,11 @@ export default function TabOneScreen() {
   const [showMenu, setShowMenu] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const textInputRef = useRef<TextInput>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
   const navigation = useNavigation();
   const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
   const [showSelectionMenu, setShowSelectionMenu] = useState(false);
+  const [lastScrollY, setLastScrollY] = useState(0);
 
   useEffect(() => {
     // Set up the back button in the header
@@ -112,21 +114,56 @@ export default function TabOneScreen() {
     if (selection) {
       const { start, end } = selection;
       const text = event.nativeEvent.text;
+      
+      // Check if text is being unselected (start equals end)
+      if (start === end) {
+        // No text is selected, hide the menu
+        setShowSelectionMenu(false);
+        setSelectedText('');
+        return;
+      }
+      
       const selectedText = text.substring(start, end);
       
       if (selectedText.trim()) {
         setSelectedText(selectedText);
         // Get the position of the selection
         textInputRef.current?.measure((x, y, width, height, pageX, pageY) => {
-          // Calculate position based on the selection
-          const selectionY = pageY + (height * (start / text.length));
+          // Calculate approximate position of selection within the text
+          // This is an estimation since we can't get exact coordinates
+          const totalTextLength = text.length;
+          const selectionStartPercent = start / totalTextLength;
+          const selectionEndPercent = end / totalTextLength;
+          const selectionMidPercent = (selectionStartPercent + selectionEndPercent) / 2;
+          
+          // Estimate vertical position of the selection
+          const selectionY = pageY + (height * selectionMidPercent);
+          
+          // Position the menu above the selection to avoid covering it
           setSelectionPosition({ 
             x: pageX + width / 2, // Center horizontally
-            y: selectionY - 40 // Position above the selection
+            y: selectionY - 60 // Position well above the selection
           });
           setShowSelectionMenu(true);
         });
       }
+    }
+  };
+
+  const handleScroll = (event: any) => {
+    const currentScrollY = event.nativeEvent.contentOffset.y;
+    
+    // Keep track of last scroll position
+    const scrollDifference = currentScrollY - lastScrollY;
+    setLastScrollY(currentScrollY);
+    
+    // If menu is showing and there's an active selection, update its position to move with the scroll
+    if (showSelectionMenu && selectedText) {
+      // Directly adjust the position based on the scroll amount
+      setSelectionPosition(prevPos => ({
+        x: prevPos.x, // Keep x position the same
+        y: prevPos.y - scrollDifference // Move menu with the scroll
+      }));
     }
   };
 
@@ -155,11 +192,24 @@ export default function TabOneScreen() {
       // Show verses for selected chapter
       const verses = getVerses();
       return (
-        <View style={styles.container}>
+        <View 
+          style={styles.container}
+          onStartShouldSetResponder={() => {
+            // Close the menu if tapping outside the selection
+            if (showSelectionMenu) {
+              setShowSelectionMenu(false);
+              return true;
+            }
+            return false;
+          }}
+        >
           <ScrollView 
+            ref={scrollViewRef}
             style={styles.scrollView}
             contentContainerStyle={styles.versesContent}
             showsVerticalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
           >
             <TextInput 
               ref={textInputRef}
