@@ -1,5 +1,6 @@
-import { StyleSheet, ScrollView, TouchableOpacity, Dimensions, TextInput, Modal, View, TouchableWithoutFeedback } from 'react-native';
+import { StyleSheet, ScrollView, TouchableOpacity, Dimensions, TextInput, Modal, View, TouchableWithoutFeedback, Share } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Text } from '@/components/Themed';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigation } from '@react-navigation/native';
@@ -11,6 +12,23 @@ type BookOfMormonData = {
   [key: string]: {
     [key: string]: string[];
   };
+};
+
+// Enhanced highlight type with color option
+type Highlight = {
+  text: string, 
+  start: number, 
+  end: number,
+  color?: string
+};
+
+// Available highlight colors
+const HIGHLIGHT_COLORS = {
+  yellow: 'rgba(255, 235, 59, 0.4)',
+  green: 'rgba(76, 175, 80, 0.4)',
+  blue: 'rgba(33, 150, 243, 0.4)',
+  pink: 'rgba(233, 30, 99, 0.4)',
+  purple: 'rgba(156, 39, 176, 0.4)',
 };
 
 const booksOfMormon = [
@@ -50,6 +68,216 @@ const bookChapters: { [key: string]: number } = {
   'Moroni': 10
 };
 
+// A component for text highlighting directly over the selected text
+const HighlightedText = ({ 
+  text, 
+  highlights, 
+  style, 
+  onSelectionChange,
+  textRef,
+  removeHighlight,
+  updateHighlightColor
+}: { 
+  text: string, 
+  highlights: Highlight[],
+  style: any,
+  onSelectionChange: (event: any) => void,
+  textRef: React.RefObject<TextInput>,
+  removeHighlight?: (index: number) => void,
+  updateHighlightColor?: (index: number, color: string) => void
+}) => {
+  // Extract style values safely
+  const fontSize = style?.fontSize || 16;
+  const lineHeight = style?.lineHeight || 24;
+  const textColor = style?.color || '#000';
+  const padding = style?.padding || 12;
+  const paddingVertical = style?.paddingVertical || 12;
+
+  type TextSegment = {
+    text: string;
+    isHighlighted: boolean;
+    color: string | undefined;
+    index: number;
+  };
+
+  // Render a segment with appropriate styling
+  const renderSegment = (segment: TextSegment, lineIndex: number, segmentIndex: number) => {
+    return (
+      <Text
+        key={`segment-${lineIndex}-${segmentIndex}`}
+        style={{
+          backgroundColor: segment.isHighlighted ? segment.color : 'transparent',
+          fontSize,
+          lineHeight,
+          color: textColor,
+        }}
+      >
+        {segment.text}
+      </Text>
+    );
+  };
+
+  // Create text spans with highlights
+  const renderTextWithHighlights = () => {
+    // If no highlights, just return the plain text with original styling
+    if (!highlights.length) {
+      return (
+        <Text style={[{ fontSize, lineHeight, color: textColor }]}>
+          {text}
+        </Text>
+      );
+    }
+    
+    // Split text into paragraphs (preserving the original paragraph structure)
+    const paragraphs = text.split('\n\n');
+    const paragraphOffsets: number[] = [];
+    
+    // Calculate the offset of each paragraph in the original text
+    let offset = 0;
+    paragraphs.forEach(p => {
+      paragraphOffsets.push(offset);
+      offset += p.length + 2; // +2 for '\n\n'
+    });
+    
+    // Render each paragraph with its highlights
+    return paragraphs.map((paragraph, paragraphIndex) => {
+      const paragraphOffset = paragraphOffsets[paragraphIndex];
+      const isLastParagraph = paragraphIndex === paragraphs.length - 1;
+      
+      // Find highlights that affect this paragraph
+      const paragraphHighlights = highlights.filter(h => 
+        (h.start >= paragraphOffset && h.start < paragraphOffset + paragraph.length) ||
+        (h.end > paragraphOffset && h.end <= paragraphOffset + paragraph.length) ||
+        (h.start <= paragraphOffset && h.end >= paragraphOffset + paragraph.length)
+      );
+      
+      // If no highlights in this paragraph, render it as-is
+      if (paragraphHighlights.length === 0) {
+        return (
+          <Text 
+            key={`paragraph-${paragraphIndex}`}
+            style={{
+              marginBottom: isLastParagraph ? 0 : 16,
+              fontSize,
+              lineHeight,
+              color: textColor,
+            }}
+          >
+            {paragraph}
+          </Text>
+        );
+      }
+      
+      // Create segments specifically for this paragraph
+      const localSegments: TextSegment[] = [];
+      let lastIdx = 0;
+      
+      // Sort paragraph highlights by position
+      const sortedParagraphHighlights = [...paragraphHighlights].sort((a, b) => 
+        Math.max(a.start - paragraphOffset, 0) - Math.max(b.start - paragraphOffset, 0)
+      );
+      
+      sortedParagraphHighlights.forEach((highlight, idx) => {
+        // Adjust highlight positions to be relative to this paragraph
+        const relativeStart = Math.max(highlight.start - paragraphOffset, 0);
+        const relativeEnd = Math.min(highlight.end - paragraphOffset, paragraph.length);
+        
+        // Only process this highlight if it actually covers some text in this paragraph
+        if (relativeEnd > relativeStart) {
+          // Add non-highlighted text before this highlight
+          if (relativeStart > lastIdx) {
+            localSegments.push({
+              text: paragraph.substring(lastIdx, relativeStart),
+              isHighlighted: false,
+              color: undefined,
+              index: -1
+            });
+          }
+          
+          // Add the highlighted text
+          localSegments.push({
+            text: paragraph.substring(relativeStart, relativeEnd),
+            isHighlighted: true,
+            color: highlight.color || HIGHLIGHT_COLORS.yellow,
+            index: idx
+          });
+          
+          lastIdx = relativeEnd;
+        }
+      });
+      
+      // Add any remaining text after the last highlight
+      if (lastIdx < paragraph.length) {
+        localSegments.push({
+          text: paragraph.substring(lastIdx),
+          isHighlighted: false,
+          color: undefined,
+          index: -1
+        });
+      }
+      
+      // Render this paragraph with its highlights
+      return (
+        <Text 
+          key={`paragraph-${paragraphIndex}`} 
+          style={{
+            marginBottom: isLastParagraph ? 0 : 16,
+          }}
+        >
+          {localSegments.map((segment, segmentIndex) => 
+            renderSegment(segment, paragraphIndex, segmentIndex)
+          )}
+        </Text>
+      );
+    });
+  };
+
+  // Create a hidden TextInput for handling text selection
+  const renderHiddenInput = () => (
+    <TextInput
+      ref={textRef}
+      style={[
+        style,
+        {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          color: 'transparent',
+          backgroundColor: 'transparent',
+        }
+      ]}
+      value={text}
+      editable={false}
+      multiline={true}
+      onSelectionChange={onSelectionChange}
+      contextMenuHidden={true}
+      selectionColor="rgba(255, 235, 59, 0.5)"
+      scrollEnabled={false}
+    />
+  );
+
+  return (
+    <View style={{ position: 'relative' }}>
+      {/* Visible text with highlights */}
+      <View style={[
+        style, 
+        { 
+          backgroundColor: 'white',
+          padding,
+          paddingVertical
+        }
+      ]}>
+        {renderTextWithHighlights()}
+      </View>
+      
+      {/* Hidden input to handle selection */}
+      {renderHiddenInput()}
+    </View>
+  );
+};
+
 export default function TabOneScreen() {
   const [selectedBook, setSelectedBook] = useState<string | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<number | null>(null);
@@ -63,6 +291,56 @@ export default function TabOneScreen() {
   const [showSelectionMenu, setShowSelectionMenu] = useState(false);
   const [lastScrollY, setLastScrollY] = useState(0);
   const [lastSelectionEnd, setLastSelectionEnd] = useState(0);
+  const [highlightedTexts, setHighlightedTexts] = useState<Highlight[]>([]);
+  const [currentSelectionRange, setCurrentSelectionRange] = useState<{ start: number, end: number } | null>(null);
+
+  // Load highlights from storage when the book and chapter change
+  useEffect(() => {
+    if (selectedBook && selectedChapter) {
+      loadHighlights();
+    }
+  }, [selectedBook, selectedChapter]);
+  
+  // Save highlights to AsyncStorage whenever they change
+  useEffect(() => {
+    if (selectedBook && selectedChapter && highlightedTexts.length > 0) {
+      saveHighlights();
+    }
+  }, [highlightedTexts]);
+
+  // Save highlights to storage
+  const saveHighlights = async () => {
+    if (!selectedBook || !selectedChapter) return;
+    
+    try {
+      const key = `highlights_${selectedBook.replace(/\s+/g, '_')}_${selectedChapter}`;
+      await AsyncStorage.setItem(key, JSON.stringify(highlightedTexts));
+      console.log('Saved highlights for', key);
+    } catch (error) {
+      console.error('Error saving highlights:', error);
+    }
+  };
+  
+  // Load highlights from storage
+  const loadHighlights = async () => {
+    if (!selectedBook || !selectedChapter) return;
+    
+    try {
+      const key = `highlights_${selectedBook.replace(/\s+/g, '_')}_${selectedChapter}`;
+      const savedHighlights = await AsyncStorage.getItem(key);
+      
+      if (savedHighlights) {
+        setHighlightedTexts(JSON.parse(savedHighlights));
+        console.log('Loaded highlights for', key);
+      } else {
+        // No highlights found, reset to empty array
+        setHighlightedTexts([]);
+      }
+    } catch (error) {
+      console.error('Error loading highlights:', error);
+      setHighlightedTexts([]);
+    }
+  };
 
   useEffect(() => {
     // Set up the back button in the header
@@ -117,12 +395,16 @@ export default function TabOneScreen() {
       const { start, end } = selection;
       const text = event.nativeEvent.text;
       
+      // Remember current scroll position
+      const currentScrollPosition = lastScrollY;
+      
       // Check if text is being unselected (start equals end)
       if (start === end) {
         // No text is selected, hide the menu
         setShowSelectionMenu(false);
         setSelectedText('');
         setLastSelectionEnd(0);
+        setCurrentSelectionRange(null);
         return;
       }
       
@@ -130,6 +412,8 @@ export default function TabOneScreen() {
       
       if (selectedText.trim()) {
         setSelectedText(selectedText);
+        // Store current selection range for highlighting
+        setCurrentSelectionRange({ start, end });
         
         // Only update position if the selection has changed
         if (end !== lastSelectionEnd) {
@@ -157,6 +441,13 @@ export default function TabOneScreen() {
             if (!showSelectionMenu) {
               setShowSelectionMenu(true);
             }
+            
+            // Restore scroll position after a short delay to prevent jumping
+            setTimeout(() => {
+              if (scrollViewRef.current) {
+                scrollViewRef.current.scrollTo({ y: currentScrollPosition, animated: false });
+              }
+            }, 10);
           });
         }
       }
@@ -181,8 +472,48 @@ export default function TabOneScreen() {
   };
 
   const handleHighlight = () => {
-    // TODO: Implement highlighting
-    setShowSelectionMenu(false);
+    // Only highlight if text is selected and we know its position
+    if (selectedText && currentSelectionRange) {
+      // Store the current scroll position before modifying state
+      const currentScrollPosition = lastScrollY;
+      
+      // Store highlights for future implementation
+      setHighlightedTexts(prev => {
+        // Check if this text is already highlighted (toggle behavior)
+        const existingIndex = prev.findIndex(h => 
+          h.start === currentSelectionRange.start && 
+          h.end === currentSelectionRange.end
+        );
+        
+        if (existingIndex >= 0) {
+          // Remove this highlight (toggle off)
+          const newHighlights = [...prev];
+          newHighlights.splice(existingIndex, 1);
+          return newHighlights;
+        } else {
+          // Add new highlight with default yellow color
+          return [...prev, {
+            text: selectedText,
+            start: currentSelectionRange.start,
+            end: currentSelectionRange.end,
+            color: HIGHLIGHT_COLORS.yellow
+          }];
+        }
+      });
+      
+      // Close the menu but keep the selection
+      setShowSelectionMenu(false);
+      
+      // Restore scroll position after a short delay to let rendering finish
+      setTimeout(() => {
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ y: currentScrollPosition, animated: false });
+        }
+      }, 50);
+    } else {
+      // Just close the menu if no selection
+      setShowSelectionMenu(false);
+    }
   };
 
   const handleAnnotate = () => {
@@ -190,34 +521,64 @@ export default function TabOneScreen() {
     setShowSelectionMenu(false);
   };
 
-  const handleShare = () => {
-    // TODO: Implement sharing
+  const handleShare = async () => {
+    // Implement sharing using Share API
+    if (selectedText) {
+      try {
+        const result = await Share.share({
+          message: selectedText,
+          title: selectedBook && selectedChapter 
+            ? `${selectedBook} ${selectedChapter}` 
+            : 'Scripture Sharing'
+        });
+        
+        if (result.action === Share.sharedAction) {
+          if (result.activityType) {
+            // shared with activity type of result.activityType
+            console.log('Shared with activity type:', result.activityType);
+          } else {
+            // shared
+            console.log('Shared successfully');
+          }
+        } else if (result.action === Share.dismissedAction) {
+          // dismissed
+          console.log('Share dismissed');
+        }
+      } catch (error) {
+        console.error('Error sharing:', error);
+      }
+    }
     setShowSelectionMenu(false);
   };
 
   const handleCopy = () => {
     // Copy selected text to clipboard
     if (selectedText) {
-      // Using dynamic import for Clipboard since the API changed in React Native
-      const copyToClipboard = async () => {
-        try {
-          // Try using the newer API first
-          if (navigator && navigator.clipboard) {
-            await navigator.clipboard.writeText(selectedText);
-          } else {
-            // Fallback for older React Native versions or platforms without navigator.clipboard
-            const Clipboard = require('react-native').Clipboard;
-            Clipboard.setString(selectedText);
-          }
+      Clipboard.setStringAsync(selectedText)
+        .then(() => {
           console.log('Copied to clipboard:', selectedText);
-        } catch (error) {
+        })
+        .catch(error => {
           console.error('Failed to copy text: ', error);
-        }
-      };
-      
-      copyToClipboard();
+        });
     }
     setShowSelectionMenu(false);
+  };
+
+  const handleRemoveHighlight = (index: number) => {
+    setHighlightedTexts(prev => {
+      const newHighlights = [...prev];
+      newHighlights.splice(index, 1);
+      return newHighlights;
+    });
+  };
+
+  const handleUpdateHighlightColor = (index: number, color: string) => {
+    setHighlightedTexts(prev => {
+      const newHighlights = [...prev];
+      newHighlights[index].color = color;
+      return newHighlights;
+    });
   };
 
   const renderContent = () => {
@@ -243,15 +604,18 @@ export default function TabOneScreen() {
             showsVerticalScrollIndicator={false}
             onScroll={handleScroll}
             scrollEventThrottle={16}
+            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+            keyboardShouldPersistTaps="handled"
+            scrollEnabled={true}
           >
-            <TextInput 
-              ref={textInputRef}
-              style={styles.verseText} 
-              value={verses.map((verse: string, index: number) => `${index + 1} ${verse}`).join('\n\n')}
-              editable={false}
-              multiline={true}
+            <HighlightedText
+              text={verses.map((verse: string, index: number) => `${index + 1} ${verse}`).join('\n\n')}
+              highlights={highlightedTexts}
+              style={styles.verseText}
               onSelectionChange={handleTextSelection}
-              contextMenuHidden={true}
+              textRef={textInputRef}
+              removeHighlight={handleRemoveHighlight}
+              updateHighlightColor={handleUpdateHighlightColor}
             />
           </ScrollView>
           {showSelectionMenu && (
